@@ -4,7 +4,6 @@ import UserAgent from "user-agents";
 import readline from "readline";
 import { faker } from "@faker-js/faker";
 import TorControl from "tor-control";
-import { Cluster } from 'puppeteer-cluster';
 import { anonymizeProxy, closeAnonymizedProxy } from 'proxy-chain';
 
 // 🔹 Inicializar puppeteer-extra con stealth

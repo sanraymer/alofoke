@@ -10,7 +10,6 @@
     "@faker-js/faker": "^10.0.0",
     "proxy-chain": "^2.5.9",
     "puppeteer": "^24.17.0",
-    "puppeteer-cluster": "^0.24.0",
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2",
     "tor-control": "^0.0.3",
