@@ -36,7 +36,7 @@ async function openVideo(url, index) {
     const userAgent = new UserAgent({ deviceCategory: "desktop" }).toString();
     const proxy = PROXIES[index % PROXIES.length];
 
-    console.log(`Instancia ${index + 1} - UA: ${userAgent} - Proxy: ${proxy.host}:${proxy.port}`);
+    //console.log(`Instancia ${index + 1} - UA: ${userAgent} - Proxy: ${proxy.host}:${proxy.port}`);
 
     const browser = await puppeteer.launch({
       headless: false,
@@ -79,7 +79,7 @@ async function openVideo(url, index) {
       },
       {
         name: "user_token",
-        value: faker.random.alphaNumeric(16),
+        value: faker.internet.userName(),
         domain: ".youtube.com",
         path: "/",
       },
@@ -89,7 +89,13 @@ async function openVideo(url, index) {
         domain: ".youtube.com",
         path: "/",
       },
-    ];
+      {
+        name: "location",
+        value: faker.address.country(),
+        domain: ".youtube.com",
+        path: "/",
+      },
+    ];    
 
     await client.send("Network.setCookies", { cookies });
 
