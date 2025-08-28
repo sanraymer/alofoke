@@ -5,14 +5,18 @@ import readline from "readline";
 import { faker } from "@faker-js/faker";
 import TorControl from "tor-control";
 import { anonymizeProxy, closeAnonymizedProxy } from 'proxy-chain';
+import { EventEmitter } from 'events';
+
+// 🔹 Evitar MaxListenersExceededWarning por alto recambio de sockets/instancias
+EventEmitter.defaultMaxListeners = 50;
 
 // 🔹 Inicializar puppeteer-extra con stealth
 puppeteerExtra.use(stealthPlugin());
 const puppeteer = puppeteerExtra;
 
 // 🔹 Configuración video
-const VIEWS = 5;
-const VIDEO_ID = "mwmjhQwkAno";
+const VIEWS = 20;
+const VIDEO_ID = "-GCuCyl6bzU";
 const CONFIG = { 
   url: `https://www.youtube.com/embed/${VIDEO_ID}?mute=1&rel=0&vq=small`,
   cantidad: VIEWS,
@@ -54,7 +58,8 @@ async function openVideo(url, index) {
   try {
     // 🔹 Solicitar nueva IP Tor
     await newTorIdentity();
-    await new Promise(r => setTimeout(r, 5000)); // esperar 5s para que la IP se cambie
+    // 🔹 Espera aleatoria 6–10s para que Tor aplique nueva identidad
+    await new Promise(r => setTimeout(r, 6000 + Math.floor(Math.random()*4000)));
 
     const userAgent = new UserAgent({ deviceCategory: "desktop" }).toString();
     // 🔹 Locale y timezone aleatorios con @faker-js/faker (cientos de combinaciones)
@@ -74,7 +79,7 @@ async function openVideo(url, index) {
     console.log(`🛡️  Instancia ${index + 1}: HTTP proxy local en ${httpProxyUrl}`);
 
     const browser = await puppeteer.launch({
-      headless: false,
+      headless: true,
       ignoreHTTPSErrors: true,
       args: [
         `--user-agent=${userAgent}`,
@@ -96,9 +101,15 @@ async function openVideo(url, index) {
 
     const page = await browser.newPage();
     await page.setUserAgent(userAgent);
-    await page.setExtraHTTPHeaders({ 'Accept-Language': `${locale},${lang};q=0.9` });
+    // 🔹 Cabeceras realistas para embed (coherentes con YouTube)
+    await page.setExtraHTTPHeaders({
+      'Accept-Language': `${locale},${lang};q=0.9`,
+      'Referer': 'https://www.youtube.com/',
+      'Origin': 'https://www.youtube.com'
+    });
+    let devtools;
     try {
-      const devtools = await page.target().createCDPSession();
+      devtools = await page.target().createCDPSession();
       await devtools.send('Emulation.setLocaleOverride', { locale });
       await devtools.send('Emulation.setTimezoneOverride', { timezoneId: timezone });
     } catch {}
@@ -141,18 +152,66 @@ async function openVideo(url, index) {
 
     // 🔹 Reinicio controlado por tiempo o por detección de bot-check
     let restarted = false;
+    // 🔹 Guardar referencias para limpieza
+    let restartTimer;
+    let pollBotCheck;
+    let microInterval;
+    const cleanup = async () => {
+      try { if (restartTimer) clearTimeout(restartTimer); } catch {}
+      try { if (pollBotCheck) clearInterval(pollBotCheck); } catch {}
+      try { if (microInterval) clearInterval(microInterval); } catch {}
+      try { page.removeAllListeners(); } catch {}
+      try { browser.removeAllListeners(); } catch {}
+      try {
+        if (devtools && typeof devtools.detach === 'function') {
+          await devtools.detach().catch(() => {});
+        }
+      } catch {}
+    };
+    const removeBrowserFromList = () => {
+      const idx = browsers.indexOf(browser);
+      if (idx !== -1) browsers.splice(idx, 1);
+    };
     const handleRestart = async (reason) => {
       if (restarted) return;
       restarted = true;
       console.log(`🔄 Instancia ${index + 1}: reinicio por ${reason}`);
+      await cleanup();
       try { await browser.close(); } catch {}
       try { await closeAnonymizedProxy(httpProxyUrl, true); } catch {}
+      removeBrowserFromList();
       try {
         await newTorIdentity();
-        await new Promise(r => setTimeout(r, 5000));
+        await new Promise(r => setTimeout(r, 6000 + Math.floor(Math.random()*4000)));
       } catch {}
       openVideo(url, index);
     };
+
+    // 🔹 Validación de proxy/IP antes de ir a YouTube
+    try {
+      const ipResult = await page.evaluate(async () => {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 8000);
+        try {
+          const res = await fetch('https://api.ipify.org?format=json', { signal: controller.signal, cache: 'no-store' });
+          const data = await res.json();
+          return data && data.ip ? data.ip : null;
+        } catch (e) {
+          return null;
+        } finally {
+          clearTimeout(timeout);
+        }
+      });
+      if (!ipResult) {
+        await handleRestart('fallo validación de proxy/IP');
+        return;
+      } else {
+        console.log(`🌐 Instancia ${index + 1} IP saliente: ${ipResult}`);
+      }
+    } catch {
+      await handleRestart('excepción validando proxy/IP');
+      return;
+    }
 
     await page.goto(url, { waitUntil: "networkidle2", timeout: 90000 });
     await clickLargePlayButton(page);
@@ -178,7 +237,7 @@ async function openVideo(url, index) {
       setTimeout(moveMouseRandom, jitter());
       setTimeout(clickNearCenter, jitter()+600);
       setTimeout(doScroll, jitter()+1200);
-      const microInterval = setInterval(async () => {
+      microInterval = setInterval(async () => {
         try { await moveMouseRandom(); } catch {}
       }, 3000 + Math.floor(Math.random()*4000));
       // Detener el interval al reiniciar
@@ -201,25 +260,27 @@ async function openVideo(url, index) {
       observer.observe(document.body, { childList: true, subtree: true });
     });
 
-    const restartTimer = setTimeout(async () => {
+    const watchMs = 120000 + Math.floor(Math.random()*60000); // 120–180s
+    restartTimer = setTimeout(async () => {
       if (restarted) return;
-      console.log(`⏱ 50 segundos cumplidos, cerrando y reiniciando instancia ${index + 1}`);
+      console.log(`⏱ ${Math.round(watchMs/1000)} segundos cumplidos, cerrando y reiniciando instancia ${index + 1}`);
+      await cleanup();
       try { await browser.close(); } catch {}
       try { await closeAnonymizedProxy(httpProxyUrl, true); } catch {}
+      removeBrowserFromList();
       openVideo(url, index); // 🔹 reinicia con nueva IP
-    }, 50000);
+    }, watchMs);
 
     // 🔹 Detector de pantalla de error/bot-check por selector de YouTube (independiente del idioma)
     const errorSelector = ".ytp-error, .ytp-error-content-wrap";
-    const pollBotCheck = setInterval(async () => {
+    pollBotCheck = setInterval(async () => {
       if (restarted) { clearInterval(pollBotCheck); return; }
       try {
         const found = await page.evaluate((sel) => {
           return Boolean(document.querySelector(sel));
         }, errorSelector);
         if (found) {
-          clearInterval(pollBotCheck);
-          clearTimeout(restartTimer);
+          await cleanup();
           await handleRestart("YouTube error/bot-check");
         }
       } catch {}
@@ -231,7 +292,7 @@ async function openVideo(url, index) {
 }
 
 for (let i = 0; i < CONFIG.cantidad; i++) {
-  setTimeout(() => openVideo(CONFIG.url, i), i * 5000);
+  setTimeout(() => openVideo(CONFIG.url, i), i * (15000 + Math.floor(Math.random()*5000))); // 15–20s entre lanzamientos
 }
 
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
