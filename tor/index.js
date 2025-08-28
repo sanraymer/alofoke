@@ -8,16 +8,16 @@ import { anonymizeProxy, closeAnonymizedProxy } from 'proxy-chain';
 import { EventEmitter } from 'events';
 
 // 🔹 Evitar MaxListenersExceededWarning por alto recambio de sockets/instancias
-EventEmitter.defaultMaxListeners = 50;
+EventEmitter.defaultMaxListeners = 1000;
 
 // 🔹 Inicializar puppeteer-extra con stealth
 puppeteerExtra.use(stealthPlugin());
 const puppeteer = puppeteerExtra;
 
 // 🔹 Configuración video desde variables de entorno
-const VIEWS = parseInt(process.env.VIEWS) || 20;
-const VIDEO_ID = process.env.VIDEO_ID || "41i4d1JbrQg";
-const CONFIG = { 
+const VIEWS = parseInt(process.env.VIEWS) || 3;
+const VIDEO_ID = process.env.VIDEO_ID || "DaoxoYGuks4";
+const CONFIG = {
   url: `https://www.youtube.com/embed/${VIDEO_ID}?mute=1&rel=0&vq=small`,
   cantidad: VIEWS,
 };
@@ -33,32 +33,47 @@ const tor = new TorControl({
   password: "", // usar CookieAuthentication o dejar vacío
 });
 
+let torLock = false;
+
+async function acquireTorLock() {
+  while (torLock) {
+    await new Promise(r => setTimeout(r, 500)); // espera 0.5s si alguien más usa Tor
+  }
+  torLock = true;
+}
+
+function releaseTorLock() {
+  torLock = false;
+}
+
 async function newTorIdentity() {
-  const maxRetries = 3;
-  const timeoutMs = 15000; // 15s timeout
-  
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      const result = await Promise.race([
-        new Promise((resolve, reject) => {
-          tor.signalNewnym((err) => {
-            if (err) reject(err);
-            else resolve();
-          });
-        }),
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Tor timeout')), timeoutMs)
-        )
-      ]);
-      return result;
-    } catch (error) {
-      console.log(`⚠️ Intento ${attempt}/${maxRetries} de Tor falló: ${error.message}`);
-      if (attempt === maxRetries) {
-        throw new Error(`Tor falló después de ${maxRetries} intentos: ${error.message}`);
+  await acquireTorLock(); // espera hasta que Tor esté libre
+  try {
+    const maxRetries = 3;
+    const timeoutMs = 15000; // 15s timeout
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        await Promise.race([
+          new Promise((resolve, reject) => {
+            tor.signalNewnym((err) => {
+              if (err) reject(err);
+              else resolve();
+            });
+          }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Tor timeout')), timeoutMs))
+        ]);
+        // 🔹 Después de NEWNYM, esperar 10s mínimo antes de permitir otro cambio
+        await new Promise(r => setTimeout(r, 10000));
+        return;
+      } catch (error) {
+        console.log(`⚠️ Intento ${attempt}/${maxRetries} de Tor falló: ${error.message}`);
+        if (attempt === maxRetries) throw error;
+        await new Promise(r => setTimeout(r, 2000 + Math.floor(Math.random()*3000)));
       }
-      // Esperar antes del siguiente intento
-      await new Promise(r => setTimeout(r, 2000 + Math.floor(Math.random()*3000)));
     }
+  } finally {
+    releaseTorLock(); // liberar Tor para otras instancias
   }
 }
 
@@ -99,7 +114,7 @@ async function openVideo(url, index) {
     let httpProxyUrl;
     let retryCount = 0;
     const maxProxyRetries = 3;
-    
+
     while (retryCount < maxProxyRetries) {
       try {
         const username = `iso_${index}_${Date.now()}`;
@@ -111,13 +126,13 @@ async function openVideo(url, index) {
       } catch (error) {
         retryCount++;
         console.log(`⚠️ Instancia ${index + 1}: Proxy falló (${retryCount}/${maxProxyRetries}): ${error.message}`);
-        
+
         if (retryCount >= maxProxyRetries) {
           throw new Error(`Proxy falló después de ${maxProxyRetries} intentos: ${error.message}`);
         }
-        
+
         // Esperar antes del siguiente intento (delay progresivo)
-        const delayMs = 15000 + (retryCount * 10000) + Math.floor(Math.random()*10000);
+        const delayMs = 5000 + (retryCount * 10000) + Math.floor(Math.random()*10000);
         console.log(`⏳ Instancia ${index + 1}: Esperando ${Math.round(delayMs/1000)}s antes de reintentar...`);
         await new Promise(r => setTimeout(r, delayMs));
       }
@@ -152,6 +167,7 @@ async function openVideo(url, index) {
       'Referer': 'https://www.youtube.com/',
       'Origin': 'https://www.youtube.com'
     });
+
     let devtools;
     try {
       devtools = await page.target().createCDPSession();
@@ -164,34 +180,18 @@ async function openVideo(url, index) {
       height: 180 + Math.floor(Math.random() * 10),
     });
 
-    // 🔹 Bloquear solo recursos no críticos (permitir scripts y media para YouTube)
-    // Delata que es un bot, mejor abrir un embebido que no tiene muchos recursos no necesarios.
-    /*await page.setRequestInterception(true);
-    page.on("request", req => {
-      const blocked = ["image", "stylesheet", "font"];
-      if(blocked.includes(req.resourceType())) req.abort();
-      else req.continue();
-    });*/
-
-    // Cookies
-    // No son necesarias injectarlas porque delata que es un bot, mejor que Youtube genere las suyas
-    /*const client = await page.target().createCDPSession();
-    const cookies = [
-      { name: "session_id", value: faker.datatype.uuid(), domain: ".youtube.com", path: "/", httpOnly: true, secure: true, sameSite: "Lax" },
-      { name: "user_token", value: faker.internet.userName(), domain: ".youtube.com", path: "/" },
-      { name: "visitor_id", value: faker.datatype.number({ min: 1000000, max: 9999999 }).toString(), domain: ".youtube.com", path: "/" },
-      { name: "location", value: faker.address.country(), domain: ".youtube.com", path: "/" },
-    ];
-    await client.send("Network.setCookies", { cookies });*/
-
-    page.on("response", async (response) => {
+    // Observadores/handlers Node-side (se eliminarán con removeAllListeners/cleanup)
+    const onResponse = async (response) => {
       if (response.status() >= 400) {
         console.log(`⚠️ Instancia ${index + 1} recibió error HTTP ${response.status()}`);
       }
-    });
+    };
+    const onError = (err) => console.log(`⚠️ Instancia ${index + 1} error: ${err.message}`);
+    const onPageError = (err) => console.log(`⚠️ Instancia ${index + 1} pageerror: ${err.message}`);
 
-    page.on("error", (err) => console.log(`⚠️ Instancia ${index + 1} error: ${err.message}`));
-    page.on("pageerror", (err) => console.log(`⚠️ Instancia ${index + 1} pageerror: ${err.message}`));
+    page.on("response", onResponse);
+    page.on("error", onError);
+    page.on("pageerror", onPageError);
 
     browsers.push(browser);
 
@@ -201,22 +201,70 @@ async function openVideo(url, index) {
     let restartTimer;
     let pollBotCheck;
     let microInterval;
+
+    // Función robusta de limpieza que:
+    // - limpia timers/intervals node-side
+    // - remueve listeners de page/browser
+    // - desconecta devtools CDP si existe
+    // - solicita al contexto de la página desconectar MutationObserver y handlers in-page
     const cleanup = async () => {
-      try { if (restartTimer) clearTimeout(restartTimer); } catch {}
-      try { if (pollBotCheck) clearInterval(pollBotCheck); } catch {}
-      try { if (microInterval) clearInterval(microInterval); } catch {}
-      try { page.removeAllListeners(); } catch {}
-      try { browser.removeAllListeners(); } catch {}
+      try { if (restartTimer) { clearTimeout(restartTimer); restartTimer = null; } } catch {}
+      try { if (pollBotCheck) { clearInterval(pollBotCheck); pollBotCheck = null; } } catch {}
+      try { if (microInterval) { clearInterval(microInterval); microInterval = null; } } catch {}
+
+      // 1) Intentar ejecutar la limpieza dentro de la página (remover observer y handlers añadidos en page.evaluate)
+      try {
+        // Si la página aún está disponible, pedirle que ejecute su cleanup in-page
+        await page.evaluate(() => {
+          try {
+            if (window.__yt_cleanup && typeof window.__yt_cleanup === 'function') {
+              window.__yt_cleanup();
+            } else {
+              // fallback: intentar desconectar elementos concretos
+              if (window.__yt_observer && typeof window.__yt_observer.disconnect === 'function') {
+                window.__yt_observer.disconnect();
+                window.__yt_observer = null;
+              }
+              if (window.__yt_pause_handler) {
+                const v = document.querySelector('video');
+                if (v && typeof window.__yt_pause_handler === 'function') {
+                  v.removeEventListener('pause', window.__yt_pause_handler);
+                }
+                window.__yt_pause_handler = null;
+              }
+            }
+          } catch (e) {
+            // swallow — la página puede estar en proceso de cierre
+          }
+        }).catch(() => {});
+      } catch {}
+
+      // 2) Remover listeners Node-side del page y del browser
+      try { page.removeListener("response", onResponse); } catch {}
+      try { page.removeListener("error", onError); } catch {}
+      try { page.removeListener("pageerror", onPageError); } catch {}
+      try { if (page.removeAllListeners) page.removeAllListeners(); } catch {}
+      try { if (browser.removeAllListeners) browser.removeAllListeners(); } catch {}
+
+      // 3) Detach devtools CDP si se creó
       try {
         if (devtools && typeof devtools.detach === 'function') {
           await devtools.detach().catch(() => {});
+          devtools = null;
         }
       } catch {}
+
+      // 4) Asegurar que no queden micro-intervals atados a eventos de 'close'
+      try {
+        page.removeAllListeners('close');
+      } catch {}
     };
+
     const removeBrowserFromList = () => {
       const idx = browsers.indexOf(browser);
       if (idx !== -1) browsers.splice(idx, 1);
     };
+
     const handleRestart = async (reason) => {
       if (restarted) return;
       restarted = true;
@@ -285,27 +333,55 @@ async function openVideo(url, index) {
       microInterval = setInterval(async () => {
         try { await moveMouseRandom(); } catch {}
       }, 3000 + Math.floor(Math.random()*4000));
-      // Detener el interval al reiniciar
-      const stopMicro = () => clearInterval(microInterval);
+      // Detener el interval al cerrar la página (stopMicro) — además cleanup borra el interval
+      const stopMicro = () => { if (microInterval) { clearInterval(microInterval); microInterval = null; } };
       page.on('close', stopMicro);
     } catch {}
 
+    // 🔹 Inyectar handlers en la página pero con referencias globales en window
+    // Esto nos permite pedir explícitamente la desconexión desde Node usando page.evaluate
     await page.evaluate(() => {
-      const video = document.querySelector("video");
-      if (video) {
-        video.muted = true;
-        video.play().catch(() => {});
-        video.addEventListener("pause", () => video.play());
-      }
+      try {
+        // handler de pausa
+        const vid = document.querySelector("video");
+        if (vid) {
+          window.__yt_pause_handler = function() { vid.play().catch(()=>{}); };
+          vid.muted = true;
+          vid.play().catch(()=>{});
+          vid.addEventListener("pause", window.__yt_pause_handler);
+        }
 
-      const observer = new MutationObserver(() => {
-        const skipBtn = document.querySelector(".ytp-ad-skip-button.ytp-button");
-        if (skipBtn) skipBtn.click();
-      });
-      observer.observe(document.body, { childList: true, subtree: true });
+        // MutationObserver para detectar y clickear "skip ad"
+        window.__yt_observer = new MutationObserver(() => {
+          try {
+            const skipBtn = document.querySelector(".ytp-ad-skip-button.ytp-button");
+            if (skipBtn) skipBtn.click();
+          } catch {}
+        });
+        window.__yt_observer.observe(document.body, { childList: true, subtree: true });
+
+        // Función de limpieza in-page
+        window.__yt_cleanup = function() {
+          try {
+            if (window.__yt_observer && typeof window.__yt_observer.disconnect === 'function') {
+              window.__yt_observer.disconnect();
+              window.__yt_observer = null;
+            }
+          } catch (e) {}
+          try {
+            const v = document.querySelector("video");
+            if (v && window.__yt_pause_handler) {
+              v.removeEventListener("pause", window.__yt_pause_handler);
+            }
+            window.__yt_pause_handler = null;
+          } catch (e) {}
+        };
+      } catch (e) {
+        // swallow
+      }
     });
 
-    const watchMs = 120000 + Math.floor(Math.random()*60000); // 120–180s
+    const watchMs = 300000 + Math.floor(Math.random()*60000); // 300–360s
     restartTimer = setTimeout(async () => {
       if (restarted) return;
       console.log(`⏱ ${Math.round(watchMs/1000)} segundos cumplidos, cerrando y reiniciando instancia ${index + 1}`);
@@ -319,7 +395,7 @@ async function openVideo(url, index) {
     // 🔹 Detector de pantalla de error/bot-check por selector de YouTube (independiente del idioma)
     const errorSelector = ".ytp-error, .ytp-error-content-wrap";
     pollBotCheck = setInterval(async () => {
-      if (restarted) { clearInterval(pollBotCheck); return; }
+      if (restarted) { clearInterval(pollBotCheck); pollBotCheck = null; return; }
       try {
         const found = await page.evaluate((sel) => {
           return Boolean(document.querySelector(sel));

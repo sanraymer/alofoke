@@ -12,8 +12,8 @@ docker build -t alofoke-app .
 
 docker run -d --name alofoke-1 \
   -p 9050:9050 -p 9051:9051 \
-  -e VIDEO_ID="41i4d1JbrQg" \
-  -e VIEWS=20 \
+  -e VIDEO_ID="fIUr0bJbaAg" \
+  -e VIEWS=50 \
   alofoke-app
 
 # Docker Compose
@@ -42,15 +42,13 @@ docker rm alofoke-1
 docker stats alofoke-1
 
 ## 🖥️ Instalación local (Alternativa)
-
-### Prerrequisitos
-- Node.js 18+
-- Tor
-
 ### Instalación Tor (macOS)
 ```bash
 brew install tor
 brew services start tor
+
+// Correr con este:
+tor -f ~/tor_config/torrc
 ```
 
 ### Configuración Tor
@@ -68,38 +66,3 @@ npm install
 node index.js
 ```
 
-## ⚙️ Configuración
-
-### Variables principales en `index.js`
-- `VIEWS`: Número de instancias simultáneas (recomendado: 8-10)
-- `VIDEO_ID`: ID del video de YouTube
-- `watchMs`: Tiempo de visionado (120-180s recomendado)
-
-
-### Estadísticas del contenedor
-```bash
-docker stats alofoke-app
-```
-
-## 🛠️ Troubleshooting
-
-### Tor no inicia
-```bash
-docker-compose down
-docker volume rm alofoke_tor-data
-docker-compose up --build
-```
-
-### Problemas de memoria
-Ajustar límites en `docker-compose.yml`:
-```yaml
-deploy:
-  resources:
-    limits:
-      memory: 4G  # Aumentar si es necesario
-```
-
-### Logs detallados
-```bash
-docker-compose logs -f --tail=100
-```
