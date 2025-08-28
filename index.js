@@ -2,18 +2,33 @@ import puppeteer from "puppeteer";
 import UserAgent from "user-agents";
 import readline from "readline";
 import faker from "faker";
+import TorControl from "tor-control";
+import { Cluster } from 'puppeteer-cluster';
+import { anonymizeProxy, closeAnonymizedProxy } from 'proxy-chain';
 
-const PROXIES = [
-  { host: "pr.oxylabs.io", port: "7777", username: "customer-alofoke_nC7yb-cc-US", password: "zph5DYP1nqb1dub_udu" },
-];
-
-const VIEWS = 1;
-const VIDEO_ID = "pAE6J49NT8E";
-
-const CONFIG = {
-  url: `https://www.youtube.com/embed/${VIDEO_ID}?mute=1&rel=0`,
+// 🔹 Configuración video
+const VIEWS = 5;
+const VIDEO_ID = "mwmjhQwkAno";
+const CONFIG = { 
+  url: `https://www.youtube.com/embed/${VIDEO_ID}?mute=1&rel=0&vq=small`,
   cantidad: VIEWS,
 };
+
+// 🔹 Control de Tor para rotar IP
+const tor = new TorControl({
+  host: "127.0.0.1",
+  port: 9051,
+  password: "", // usar CookieAuthentication o dejar vacío
+});
+
+async function newTorIdentity() {
+  return new Promise((resolve, reject) => {
+    tor.signalNewnym((err) => {
+      if (err) reject(err);
+      else resolve();
+    });
+  });
+}
 
 const browsers = [];
 
@@ -33,17 +48,24 @@ const clickLargePlayButton = async (page) => {
 
 async function openVideo(url, index) {
   try {
-    const userAgent = new UserAgent({ deviceCategory: "desktop" }).toString();
-    const proxy = PROXIES[index % PROXIES.length];
+    // 🔹 Solicitar nueva IP Tor
+    await newTorIdentity();
+    await new Promise(r => setTimeout(r, 5000)); // esperar 5s para que la IP se cambie
 
-    //console.log(`Instancia ${index + 1} - UA: ${userAgent} - Proxy: ${proxy.host}:${proxy.port}`);
+    const userAgent = new UserAgent({ deviceCategory: "desktop" }).toString();
+
+    // 🔹 Crear proxy HTTP local (anonymizeProxy) que reenvía al SOCKS de Tor con credenciales únicas
+    const username = `iso_${index}_${Date.now()}`;
+    const forwardUsername = encodeURIComponent(username);
+    const socksUpstream = `socks5h://${forwardUsername}:x@127.0.0.1:9050`;
+    const httpProxyUrl = await anonymizeProxy(socksUpstream);
+    console.log(`🛡️  Instancia ${index + 1}: HTTP proxy local en ${httpProxyUrl}`);
 
     const browser = await puppeteer.launch({
-      headless: false,
+      headless: true,
       ignoreHTTPSErrors: true,
       args: [
         `--user-agent=${userAgent}`,
-        //`--proxy-server=http://${proxy.host}:${proxy.port}`,
         "--no-sandbox",
         "--disable-setuid-sandbox",
         "--disable-gpu",
@@ -52,66 +74,38 @@ async function openVideo(url, index) {
         "--mute-audio",
         "--disable-background-timer-throttling",
         "--disable-backgrounding-occluded-windows",
+        // 🔹 Usar proxy HTTP local que reenvía al SOCKS de Tor con credenciales únicas
+        `--proxy-server=${httpProxyUrl}`,
+        // 🔹 Evitar listas de bypass que puedan causar ERR_NO_SUPPORTED_PROXIES con HTTPS
+        `--proxy-bypass-list=`,
       ],
     });
 
     const page = await browser.newPage();
-    //await page.authenticate({ username: proxy.username, password: proxy.password });
     await page.setUserAgent(userAgent);
-    
+
     await page.setViewport({
-      width: 640 + Math.floor(Math.random() * 100),  // 640 a 739
-      height: 360 + Math.floor(Math.random() * 50),  // 360 a 409
+      width: 320 + Math.floor(Math.random() * 20),
+      height: 180 + Math.floor(Math.random() * 10),
     });
 
-    // 🔹 Añadir cookies aleatorias
+    // 🔹 Bloquear solo recursos no críticos (permitir scripts y media para YouTube)
+    await page.setRequestInterception(true);
+    page.on("request", req => {
+      const blocked = ["image","font"]; // "stylesheet"
+      if(blocked.includes(req.resourceType())) req.abort();
+      else req.continue();
+    });
+
     const client = await page.target().createCDPSession();
-
     const cookies = [
-      {
-        name: "session_id",
-        value: faker.datatype.uuid(),
-        domain: ".youtube.com",
-        path: "/",
-        httpOnly: true,
-        secure: true,
-        sameSite: "Lax",
-      },
-      {
-        name: "user_token",
-        value: faker.internet.userName(),
-        domain: ".youtube.com",
-        path: "/",
-      },
-      {
-        name: "visitor_id",
-        value: faker.datatype.number({ min: 1000000, max: 9999999 }).toString(),
-        domain: ".youtube.com",
-        path: "/",
-      },
-      {
-        name: "location",
-        value: faker.address.country(),
-        domain: ".youtube.com",
-        path: "/",
-      },
-    ];    
-
+      { name: "session_id", value: faker.datatype.uuid(), domain: ".youtube.com", path: "/", httpOnly: true, secure: true, sameSite: "Lax" },
+      { name: "user_token", value: faker.internet.userName(), domain: ".youtube.com", path: "/" },
+      { name: "visitor_id", value: faker.datatype.number({ min: 1000000, max: 9999999 }).toString(), domain: ".youtube.com", path: "/" },
+      { name: "location", value: faker.address.country(), domain: ".youtube.com", path: "/" },
+    ];
     await client.send("Network.setCookies", { cookies });
 
-
-    // 🔹 Bloquear recursos innecesarios para ahorrar ancho de banda
-    await page.setRequestInterception(true);
-    page.on("request", (req) => {
-      const blockedResources = ["image", "font", "media"];
-      if (blockedResources.includes(req.resourceType())) {
-        req.abort();
-      } else {
-        req.continue();
-      }
-    });
-
-    // 🔹 Manejo de errores
     page.on("response", async (response) => {
       if (response.status() >= 400) {
         console.log(`⚠️ Instancia ${index + 1} recibió error HTTP ${response.status()}`);
@@ -123,13 +117,24 @@ async function openVideo(url, index) {
 
     browsers.push(browser);
 
-    // Ir a la página
-    await page.goto(url, { waitUntil: "networkidle2", timeout: 90000 });
+    // 🔹 Reinicio controlado por tiempo o por detección de bot-check
+    let restarted = false;
+    const handleRestart = async (reason) => {
+      if (restarted) return;
+      restarted = true;
+      console.log(`🔄 Instancia ${index + 1}: reinicio por ${reason}`);
+      try { await browser.close(); } catch {}
+      try { await closeAnonymizedProxy(httpProxyUrl, true); } catch {}
+      try {
+        await newTorIdentity();
+        await new Promise(r => setTimeout(r, 5000));
+      } catch {}
+      openVideo(url, index);
+    };
 
-    // Click inicial en Play
+    await page.goto(url, { waitUntil: "networkidle2", timeout: 90000 });
     await clickLargePlayButton(page);
 
-    // 🔹 Mute y reproducir video con eventos en lugar de setInterval
     await page.evaluate(() => {
       const video = document.querySelector("video");
       if (video) {
@@ -145,29 +150,41 @@ async function openVideo(url, index) {
       observer.observe(document.body, { childList: true, subtree: true });
     });
 
-    // 🔹 Cerrar y reiniciar la instancia tras 40 segundos
-    setTimeout(async () => {
-      console.log(`⏱ 40 segundos cumplidos, cerrando y reiniciando instancia ${index + 1}`);
+    const restartTimer = setTimeout(async () => {
+      if (restarted) return;
+      console.log(`⏱ 50 segundos cumplidos, cerrando y reiniciando instancia ${index + 1}`);
       try { await browser.close(); } catch {}
-      openVideo(url, index);
-    }, 40000);
+      try { await closeAnonymizedProxy(httpProxyUrl, true); } catch {}
+      openVideo(url, index); // 🔹 reinicia con nueva IP
+    }, 50000);
+
+    // 🔹 Detector del mensaje "Sign in to confirm you’re not a bot"
+    const botText = "Sign in to confirm you’re not a bot";
+    const pollBotCheck = setInterval(async () => {
+      if (restarted) { clearInterval(pollBotCheck); return; }
+      try {
+        const found = await page.evaluate((txt) => {
+          const bodyText = document.body ? document.body.innerText : "";
+          return bodyText.includes(txt);
+        }, botText);
+        if (found) {
+          clearInterval(pollBotCheck);
+          clearTimeout(restartTimer);
+          await handleRestart("YouTube bot-check");
+        }
+      } catch {}
+    }, 3000);
 
   } catch (err) {
     console.error(`Error en instancia ${index + 1}: ${err.message}`);
   }
 }
 
-// Abrir instancias escalonadas
 for (let i = 0; i < CONFIG.cantidad; i++) {
   setTimeout(() => openVideo(CONFIG.url, i), i * 5000);
 }
 
-// Cerrar instancias con "q" + Enter
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout
-});
-
+const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 rl.on("line", async (input) => {
   if (input.toLowerCase() === "q") {
     console.log("Cerrando todas las instancias...");
