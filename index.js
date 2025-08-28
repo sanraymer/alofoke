@@ -1,14 +1,18 @@
 import puppeteer from "puppeteer";
 import UserAgent from "user-agents";
 import readline from "readline";
+import faker from "faker";
 
 const PROXIES = [
   { host: "pr.oxylabs.io", port: "7777", username: "customer-alofoke_nC7yb-cc-US", password: "zph5DYP1nqb1dub_udu" },
 ];
 
+const VIEWS = 1;
+const VIDEO_ID = "pAE6J49NT8E";
+
 const CONFIG = {
-  url: "https://www.youtube.com/embed/pAE6J49NT8E?mute=1&rel=0&vq=small",
-  cantidad: 1,
+  url: `https://www.youtube.com/embed/${VIDEO_ID}?mute=1&rel=0`,
+  cantidad: VIEWS,
 };
 
 const browsers = [];
@@ -54,16 +58,46 @@ async function openVideo(url, index) {
     const page = await browser.newPage();
     //await page.authenticate({ username: proxy.username, password: proxy.password });
     await page.setUserAgent(userAgent);
-
+    
     await page.setViewport({
-      width: 800 + Math.floor(Math.random() * 400),
-      height: 600 + Math.floor(Math.random() * 300),
+      width: 640 + Math.floor(Math.random() * 100),  // 640 a 739
+      height: 360 + Math.floor(Math.random() * 50),  // 360 a 409
     });
+
+    // 🔹 Añadir cookies aleatorias
+    const client = await page.target().createCDPSession();
+
+    const cookies = [
+      {
+        name: "session_id",
+        value: faker.datatype.uuid(),
+        domain: ".youtube.com",
+        path: "/",
+        httpOnly: true,
+        secure: true,
+        sameSite: "Lax",
+      },
+      {
+        name: "user_token",
+        value: faker.random.alphaNumeric(16),
+        domain: ".youtube.com",
+        path: "/",
+      },
+      {
+        name: "visitor_id",
+        value: faker.datatype.number({ min: 1000000, max: 9999999 }).toString(),
+        domain: ".youtube.com",
+        path: "/",
+      },
+    ];
+
+    await client.send("Network.setCookies", { cookies });
+
 
     // 🔹 Bloquear recursos innecesarios para ahorrar ancho de banda
     await page.setRequestInterception(true);
     page.on("request", (req) => {
-      const blockedResources = ["image", "font", "media"]; // stylesheet
+      const blockedResources = ["image", "font", "media"];
       if (blockedResources.includes(req.resourceType())) {
         req.abort();
       } else {
@@ -93,12 +127,11 @@ async function openVideo(url, index) {
     await page.evaluate(() => {
       const video = document.querySelector("video");
       if (video) {
-        video.muted = true; // sin audio
+        video.muted = true;
         video.play().catch(() => {});
         video.addEventListener("pause", () => video.play());
       }
 
-      // Omitir anuncios automáticos
       const observer = new MutationObserver(() => {
         const skipBtn = document.querySelector(".ytp-ad-skip-button.ytp-button");
         if (skipBtn) skipBtn.click();
@@ -106,12 +139,12 @@ async function openVideo(url, index) {
       observer.observe(document.body, { childList: true, subtree: true });
     });
 
-    // 🔹 Cerrar y reiniciar la instancia tras 60 segundos
+    // 🔹 Cerrar y reiniciar la instancia tras 40 segundos
     setTimeout(async () => {
       console.log(`⏱ 40 segundos cumplidos, cerrando y reiniciando instancia ${index + 1}`);
       try { await browser.close(); } catch {}
-      openVideo(url, index); // vuelve a abrir la misma instancia
-    }, 40000); // 40 segundos
+      openVideo(url, index);
+    }, 40000);
 
   } catch (err) {
     console.error(`Error en instancia ${index + 1}: ${err.message}`);

@@ -7,6 +7,7 @@
     "start": "node index.js"
   },
   "dependencies": {
+    "faker": "^5.5.3",
     "puppeteer": "^24.17.0",
     "user-agents": "^1.1.644"
   }
