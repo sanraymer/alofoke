@@ -1,0 +1,13 @@
+{
+  "type": "module",
+  "name": "alofoke",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "puppeteer": "^24.17.0",
+    "user-agents": "^1.1.644"
+  }
+}
