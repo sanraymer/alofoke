@@ -1,10 +1,15 @@
-import puppeteer from "puppeteer";
+import puppeteerExtra from "puppeteer-extra";
+import stealthPlugin from "puppeteer-extra-plugin-stealth";
 import UserAgent from "user-agents";
 import readline from "readline";
-import faker from "faker";
+import { faker } from "@faker-js/faker";
 import TorControl from "tor-control";
 import { Cluster } from 'puppeteer-cluster';
 import { anonymizeProxy, closeAnonymizedProxy } from 'proxy-chain';
+
+// 🔹 Inicializar puppeteer-extra con stealth
+puppeteerExtra.use(stealthPlugin());
+const puppeteer = puppeteerExtra;
 
 // 🔹 Configuración video
 const VIEWS = 5;
@@ -53,6 +58,14 @@ async function openVideo(url, index) {
     await new Promise(r => setTimeout(r, 5000)); // esperar 5s para que la IP se cambie
 
     const userAgent = new UserAgent({ deviceCategory: "desktop" }).toString();
+    // 🔹 Locale y timezone aleatorios con @faker-js/faker (cientos de combinaciones)
+    const languageCodes = [
+      "af","ar","az","be","bg","bn","bs","ca","cs","cy","da","de","el","en","es","et","eu","fa","fi","fr","ga","gl","gu","he","hi","hr","hu","hy","id","is","it","ja","ka","kk","km","kn","ko","lt","lv","mk","ml","mn","mr","ms","nb","ne","nl","nn","pa","pl","pt","ro","ru","si","sk","sl","sq","sr","sv","ta","te","th","tr","uk","ur","vi","zh"
+    ];
+    const lang = faker.helpers.arrayElement(languageCodes);
+    const country = faker.location.countryCode("alpha-2");
+    const locale = `${lang}-${country}`;
+    const timezone = faker.location.timeZone();
 
     // 🔹 Crear proxy HTTP local (anonymizeProxy) que reenvía al SOCKS de Tor con credenciales únicas
     const username = `iso_${index}_${Date.now()}`;
@@ -62,10 +75,11 @@ async function openVideo(url, index) {
     console.log(`🛡️  Instancia ${index + 1}: HTTP proxy local en ${httpProxyUrl}`);
 
     const browser = await puppeteer.launch({
-      headless: true,
+      headless: false,
       ignoreHTTPSErrors: true,
       args: [
         `--user-agent=${userAgent}`,
+        `--lang=${locale}`,
         "--no-sandbox",
         "--disable-setuid-sandbox",
         "--disable-gpu",
@@ -83,6 +97,12 @@ async function openVideo(url, index) {
 
     const page = await browser.newPage();
     await page.setUserAgent(userAgent);
+    await page.setExtraHTTPHeaders({ 'Accept-Language': `${locale},${lang};q=0.9` });
+    try {
+      const devtools = await page.target().createCDPSession();
+      await devtools.send('Emulation.setLocaleOverride', { locale });
+      await devtools.send('Emulation.setTimezoneOverride', { timezoneId: timezone });
+    } catch {}
 
     await page.setViewport({
       width: 320 + Math.floor(Math.random() * 20),
@@ -90,21 +110,24 @@ async function openVideo(url, index) {
     });
 
     // 🔹 Bloquear solo recursos no críticos (permitir scripts y media para YouTube)
-    await page.setRequestInterception(true);
+    // Delata que es un bot, mejor abrir un embebido que no tiene muchos recursos no necesarios.
+    /*await page.setRequestInterception(true);
     page.on("request", req => {
-      const blocked = ["image","font"]; // "stylesheet"
+      const blocked = ["image", "stylesheet", "font"];
       if(blocked.includes(req.resourceType())) req.abort();
       else req.continue();
-    });
+    });*/
 
-    const client = await page.target().createCDPSession();
+    // Cookies
+    // No son necesarias injectarlas porque delata que es un bot, mejor que Youtube genere las suyas
+    /*const client = await page.target().createCDPSession();
     const cookies = [
       { name: "session_id", value: faker.datatype.uuid(), domain: ".youtube.com", path: "/", httpOnly: true, secure: true, sameSite: "Lax" },
       { name: "user_token", value: faker.internet.userName(), domain: ".youtube.com", path: "/" },
       { name: "visitor_id", value: faker.datatype.number({ min: 1000000, max: 9999999 }).toString(), domain: ".youtube.com", path: "/" },
       { name: "location", value: faker.address.country(), domain: ".youtube.com", path: "/" },
     ];
-    await client.send("Network.setCookies", { cookies });
+    await client.send("Network.setCookies", { cookies });*/
 
     page.on("response", async (response) => {
       if (response.status() >= 400) {
@@ -135,6 +158,35 @@ async function openVideo(url, index) {
     await page.goto(url, { waitUntil: "networkidle2", timeout: 90000 });
     await clickLargePlayButton(page);
 
+    // 🔹 Micro-interacciones humanas
+    try {
+      await page.bringToFront();
+      const jitter = () => 200 + Math.floor(Math.random()*1000);
+      const moveMouseRandom = async () => {
+        const x = 50 + Math.floor(Math.random()*220);
+        const y = 40 + Math.floor(Math.random()*120);
+        await page.mouse.move(x, y, { steps: 10 });
+      };
+      const clickNearCenter = async () => {
+        const x = 160 + Math.floor(Math.random()*20) - 10;
+        const y = 90 + Math.floor(Math.random()*10) - 5;
+        await page.mouse.click(x, y, { delay: 20 + Math.floor(Math.random()*80) });
+      };
+      const doScroll = async () => {
+        await page.mouse.wheel({ deltaY: Math.floor(Math.random()*50) });
+      };
+      // Secuencia ligera y repetición esporádica
+      setTimeout(moveMouseRandom, jitter());
+      setTimeout(clickNearCenter, jitter()+600);
+      setTimeout(doScroll, jitter()+1200);
+      const microInterval = setInterval(async () => {
+        try { await moveMouseRandom(); } catch {}
+      }, 3000 + Math.floor(Math.random()*4000));
+      // Detener el interval al reiniciar
+      const stopMicro = () => clearInterval(microInterval);
+      page.on('close', stopMicro);
+    } catch {}
+
     await page.evaluate(() => {
       const video = document.querySelector("video");
       if (video) {
@@ -158,19 +210,18 @@ async function openVideo(url, index) {
       openVideo(url, index); // 🔹 reinicia con nueva IP
     }, 50000);
 
-    // 🔹 Detector del mensaje "Sign in to confirm you’re not a bot"
-    const botText = "Sign in to confirm you’re not a bot";
+    // 🔹 Detector de pantalla de error/bot-check por selector de YouTube (independiente del idioma)
+    const errorSelector = ".ytp-error, .ytp-error-content-wrap";
     const pollBotCheck = setInterval(async () => {
       if (restarted) { clearInterval(pollBotCheck); return; }
       try {
-        const found = await page.evaluate((txt) => {
-          const bodyText = document.body ? document.body.innerText : "";
-          return bodyText.includes(txt);
-        }, botText);
+        const found = await page.evaluate((sel) => {
+          return Boolean(document.querySelector(sel));
+        }, errorSelector);
         if (found) {
           clearInterval(pollBotCheck);
           clearTimeout(restartTimer);
-          await handleRestart("YouTube bot-check");
+          await handleRestart("YouTube error/bot-check");
         }
       } catch {}
     }, 3000);
