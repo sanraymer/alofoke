@@ -14,13 +14,17 @@ EventEmitter.defaultMaxListeners = 50;
 puppeteerExtra.use(stealthPlugin());
 const puppeteer = puppeteerExtra;
 
-// 🔹 Configuración video
-const VIEWS = 20;
-const VIDEO_ID = "-GCuCyl6bzU";
+// 🔹 Configuración video desde variables de entorno
+const VIEWS = parseInt(process.env.VIEWS) || 20;
+const VIDEO_ID = process.env.VIDEO_ID || "41i4d1JbrQg";
 const CONFIG = { 
   url: `https://www.youtube.com/embed/${VIDEO_ID}?mute=1&rel=0&vq=small`,
   cantidad: VIEWS,
 };
+
+// Log de configuración
+console.log(`🎯 Configuración: ${VIEWS} vistas para video ${VIDEO_ID}`);
+console.log(`🔗 URL: ${CONFIG.url}`);
 
 // 🔹 Control de Tor para rotar IP
 const tor = new TorControl({
@@ -30,12 +34,32 @@ const tor = new TorControl({
 });
 
 async function newTorIdentity() {
-  return new Promise((resolve, reject) => {
-    tor.signalNewnym((err) => {
-      if (err) reject(err);
-      else resolve();
-    });
-  });
+  const maxRetries = 3;
+  const timeoutMs = 15000; // 15s timeout
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const result = await Promise.race([
+        new Promise((resolve, reject) => {
+          tor.signalNewnym((err) => {
+            if (err) reject(err);
+            else resolve();
+          });
+        }),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Tor timeout')), timeoutMs)
+        )
+      ]);
+      return result;
+    } catch (error) {
+      console.log(`⚠️ Intento ${attempt}/${maxRetries} de Tor falló: ${error.message}`);
+      if (attempt === maxRetries) {
+        throw new Error(`Tor falló después de ${maxRetries} intentos: ${error.message}`);
+      }
+      // Esperar antes del siguiente intento
+      await new Promise(r => setTimeout(r, 2000 + Math.floor(Math.random()*3000)));
+    }
+  }
 }
 
 const browsers = [];
@@ -58,8 +82,8 @@ async function openVideo(url, index) {
   try {
     // 🔹 Solicitar nueva IP Tor
     await newTorIdentity();
-    // 🔹 Espera aleatoria 6–10s para que Tor aplique nueva identidad
-    await new Promise(r => setTimeout(r, 6000 + Math.floor(Math.random()*4000)));
+    // 🔹 Espera aleatoria 10–20s para que Tor aplique nueva identidad (evitar rate limiting)
+    await new Promise(r => setTimeout(r, 10000 + Math.floor(Math.random()*10000)));
 
     const userAgent = new UserAgent({ deviceCategory: "desktop" }).toString();
     // 🔹 Locale y timezone aleatorios con @faker-js/faker (cientos de combinaciones)
@@ -72,11 +96,32 @@ async function openVideo(url, index) {
     const timezone = faker.location.timeZone();
 
     // 🔹 Crear proxy HTTP local (anonymizeProxy) que reenvía al SOCKS de Tor con credenciales únicas
-    const username = `iso_${index}_${Date.now()}`;
-    const forwardUsername = encodeURIComponent(username);
-    const socksUpstream = `socks5h://${forwardUsername}:x@127.0.0.1:9050`;
-    const httpProxyUrl = await anonymizeProxy(socksUpstream);
-    console.log(`🛡️  Instancia ${index + 1}: HTTP proxy local en ${httpProxyUrl}`);
+    let httpProxyUrl;
+    let retryCount = 0;
+    const maxProxyRetries = 3;
+    
+    while (retryCount < maxProxyRetries) {
+      try {
+        const username = `iso_${index}_${Date.now()}`;
+        const forwardUsername = encodeURIComponent(username);
+        const socksUpstream = `socks5h://${forwardUsername}:x@127.0.0.1:9050`;
+        httpProxyUrl = await anonymizeProxy(socksUpstream);
+        console.log(`🛡️  Instancia ${index + 1}: HTTP proxy local en ${httpProxyUrl}`);
+        break; // Éxito, salir del bucle
+      } catch (error) {
+        retryCount++;
+        console.log(`⚠️ Instancia ${index + 1}: Proxy falló (${retryCount}/${maxProxyRetries}): ${error.message}`);
+        
+        if (retryCount >= maxProxyRetries) {
+          throw new Error(`Proxy falló después de ${maxProxyRetries} intentos: ${error.message}`);
+        }
+        
+        // Esperar antes del siguiente intento (delay progresivo)
+        const delayMs = 15000 + (retryCount * 10000) + Math.floor(Math.random()*10000);
+        console.log(`⏳ Instancia ${index + 1}: Esperando ${Math.round(delayMs/1000)}s antes de reintentar...`);
+        await new Promise(r => setTimeout(r, delayMs));
+      }
+    }
 
     const browser = await puppeteer.launch({
       headless: true,
@@ -182,7 +227,7 @@ async function openVideo(url, index) {
       removeBrowserFromList();
       try {
         await newTorIdentity();
-        await new Promise(r => setTimeout(r, 6000 + Math.floor(Math.random()*4000)));
+        await new Promise(r => setTimeout(r, 10000 + Math.floor(Math.random()*10000)));
       } catch {}
       openVideo(url, index);
     };

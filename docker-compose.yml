@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  alofoke:
+    build: .
+    container_name: alofoke-app
+    ports:
+      - "9050:9050"  # Puerto SOCKS de Tor
+      - "9051:9051"  # Puerto de control de Tor
+    volumes:
+      - ./logs:/app/logs  # Para logs de la aplicación
+      - tor-data:/var/lib/tor  # Para persistir datos de Tor
+    environment:
+      - NODE_ENV=production
+      - VIDEO_ID=41i4d1JbrQg
+      - VIEWS=20
+    restart: unless-stopped
+
+volumes:
+  tor-data:
+    driver: local
