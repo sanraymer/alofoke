@@ -13,8 +13,8 @@ EventEmitter.defaultMaxListeners = 1000;
 puppeteerExtra.use(stealthPlugin());
 const puppeteer = puppeteerExtra;
 
-const VIEWS = parseInt(process.env.VIEWS) || 4;
-const VIDEO_ID = process.env.VIDEO_ID || "KAApNx6OOKM";
+const VIEWS = parseInt(process.env.VIEWS) || 1;
+const VIDEO_ID = process.env.VIDEO_ID || "Xl8ST0qpLyA";
 const videoUrl = `https://www.youtube.com/embed/${VIDEO_ID}?mute=1&rel=0&vq=small`;
 
 // Tor control
@@ -48,7 +48,10 @@ async function getBrowser() {
     await newTorIdentity();
 
     // Proxy Tor global para TODO el navegador
-    const proxyUrl = await anonymizeProxy("socks5://127.0.0.1:9050");
+    const username = `iso_${Date.now()}`;
+    const forwardUsername = encodeURIComponent(username);
+    const socksUpstream = `socks5h://${forwardUsername}:x@127.0.0.1:9050`;
+    const httpProxyUrl = await anonymizeProxy(socksUpstream);
 
     browser = await puppeteer.launch({
       headless: false,
@@ -61,11 +64,11 @@ async function getBrowser() {
         "--mute-audio",
         "--disable-background-timer-throttling",
         "--disable-backgrounding-occluded-windows",
-        `--proxy-server=${proxyUrl}`,
+        `--proxy-server=${httpProxyUrl}`,
       ],
     });
 
-    console.log(`🌐 Navegador lanzado con proxy global: ${proxyUrl}`);
+    console.log(`🌐 Navegador lanzado con proxy global: ${httpProxyUrl}`);
   }
   return browser;
 }
@@ -96,7 +99,10 @@ async function openContext(index) {
 
   // UserAgent + idioma + zona horaria
   const userAgent = new UserAgent({ deviceCategory: "desktop" }).toString();
-  const lang = faker.helpers.arrayElement(["es", "en", "fr", "de", "pt", "it"]);
+  const languageCodes = [
+    "af","ar","az","be","bg","bn","bs","ca","cs","cy","da","de","el","en","es","et","eu","fa","fi","fr","ga","gl","gu","he","hi","hr","hu","hy","id","is","it","ja","ka","kk","km","kn","ko","lt","lv","mk","ml","mn","mr","ms","nb","ne","nl","nn","pa","pl","pt","ro","ru","si","sk","sl","sq","sr","sv","ta","te","th","tr","uk","ur","vi","zh"
+  ];
+  const lang = faker.helpers.arrayElement(languageCodes);
   const country = faker.location.countryCode("alpha-2");
   const locale = `${lang}-${country}`;
   const timezone = faker.location.timeZone();
@@ -125,6 +131,23 @@ async function openContext(index) {
   } catch {}
 
   console.log(`✅ Ventana ${index + 1} abierta en contexto aislado con IP: ${username}`);
+
+  // 🔹 Polling para detectar errores de YouTube y reiniciar solo este tab
+  const errorSelector = ".ytp-error, .ytp-error-content-wrap";
+  const poll = setInterval(async () => {
+    try {
+      const found = await page.$(errorSelector);
+      if (found) {
+        clearInterval(poll);
+        console.log(`⚠️ Error detectado en ventana ${index + 1}, reiniciando tab...`);
+        try { await page.close(); } catch {}
+        try { await context.close(); } catch {}
+        // Reinicia solo este contexto
+        await openContext(index);
+      }
+    } catch {}
+  }, 5000);
+
 }
 
 // 🔹 Lanzar todas las ventanas en el mismo navegador
