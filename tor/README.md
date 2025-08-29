@@ -11,17 +11,17 @@ docker system prune -a
 docker build -t alofoke-app .
 
 docker run -d --name alofoke-1 \
-  -e VIDEO_ID="DaoxoYGuks4" \
-  -e VIEWS=10 \
+  -e VIDEO_ID="KAApNx6OOKM" \
+  -e VIEWS=30 \
   alofoke-app
 
 docker run -d --name alofoke-2 \
-  -e VIDEO_ID="DaoxoYGuks4" \
+  -e VIDEO_ID="KAApNx6OOKM" \
   -e VIEWS=10 \
   alofoke-app
 
 docker run -d --name alofoke-3 \
-  -e VIDEO_ID="DaoxoYGuks4" \
+  -e VIDEO_ID="KAApNx6OOKM" \
   -e VIEWS=10 \
   alofoke-app
 

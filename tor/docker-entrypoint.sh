@@ -26,4 +26,4 @@ sleep 5
 
 # Ejecutar la aplicación Node.js
 echo "📱 Iniciando aplicación Node.js..."
-exec node index.js
+exec node lite.js
