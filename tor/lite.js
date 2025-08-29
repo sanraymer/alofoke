@@ -44,31 +44,36 @@ async function newTorIdentity() {
 let browser;
 async function getBrowser() {
   if (!browser) {
-    console.log("⏳ Solicitando nueva IP de Tor para el navegador principal...");
-    await newTorIdentity();
+    try {
+      console.log("⏳ Solicitando nueva IP de Tor para el navegador principal...");
+      await newTorIdentity();
+      
+      // Proxy Tor global para TODO el navegador
+      const username = `iso_${Date.now()}`;
+      const forwardUsername = encodeURIComponent(username);
+      const socksUpstream = `socks5h://${forwardUsername}:x@127.0.0.1:9050`;
+      const httpProxyUrl = await anonymizeProxy(socksUpstream);
 
-    // Proxy Tor global para TODO el navegador
-    const username = `iso_${Date.now()}`;
-    const forwardUsername = encodeURIComponent(username);
-    const socksUpstream = `socks5h://${forwardUsername}:x@127.0.0.1:9050`;
-    const httpProxyUrl = await anonymizeProxy(socksUpstream);
+      browser = await puppeteer.launch({
+        headless: false,
+        ignoreHTTPSErrors: true,
+        defaultViewport: null,
+        args: [
+          "--no-sandbox",
+          "--disable-setuid-sandbox",
+          "--disable-gpu",
+          "--mute-audio",
+          "--disable-background-timer-throttling",
+          "--disable-backgrounding-occluded-windows",
+          `--proxy-server=${httpProxyUrl}`,
+        ],
+      });
 
-    browser = await puppeteer.launch({
-      headless: false,
-      ignoreHTTPSErrors: true,
-      defaultViewport: null,
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-gpu",
-        "--mute-audio",
-        "--disable-background-timer-throttling",
-        "--disable-backgrounding-occluded-windows",
-        `--proxy-server=${httpProxyUrl}`,
-      ],
-    });
-
-    console.log(`🌐 Navegador lanzado con proxy global: ${httpProxyUrl}`);
+      console.log(`🌐 Navegador lanzado con proxy global: ${httpProxyUrl}`);
+    } catch (error) {
+      console.error("❌ Error al lanzar el navegador:", error);
+      return null; 
+    }
   }
   return browser;
 }
