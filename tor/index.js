@@ -15,7 +15,7 @@ puppeteerExtra.use(stealthPlugin());
 const puppeteer = puppeteerExtra;
 
 // 🔹 Configuración video desde variables de entorno
-const VIEWS = parseInt(process.env.VIEWS) || 3;
+const VIEWS = parseInt(process.env.VIEWS) || 10;
 const VIDEO_ID = process.env.VIDEO_ID || "DaoxoYGuks4";
 const CONFIG = {
   url: `https://www.youtube.com/embed/${VIDEO_ID}?mute=1&rel=0&vq=small`,
@@ -63,8 +63,10 @@ async function newTorIdentity() {
           }),
           new Promise((_, reject) => setTimeout(() => reject(new Error('Tor timeout')), timeoutMs))
         ]);
-        // 🔹 Después de NEWNYM, esperar 10s mínimo antes de permitir otro cambio
-        await new Promise(r => setTimeout(r, 10000));
+        // 🔹 Esperar 15–20s (mejor que 10s) antes de lanzar la siguiente identidad
+        const cooldown = 15000 + Math.floor(Math.random()*5000);
+        console.log(`⏱ Esperando ${cooldown/1000}s antes de usar nueva identidad Tor`);
+        await new Promise(r => setTimeout(r, cooldown));
         return;
       } catch (error) {
         console.log(`⚠️ Intento ${attempt}/${maxRetries} de Tor falló: ${error.message}`);
