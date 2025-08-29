@@ -64,7 +64,7 @@ async function newTorIdentity() {
           new Promise((_, reject) => setTimeout(() => reject(new Error('Tor timeout')), timeoutMs))
         ]);
         // 🔹 Esperar 15–20s (mejor que 10s) antes de lanzar la siguiente identidad
-        const cooldown = 15000 + Math.floor(Math.random()*5000);
+        const cooldown = 13000 + Math.floor(Math.random()*5000);
         console.log(`⏱ Esperando ${cooldown/1000}s antes de usar nueva identidad Tor`);
         await new Promise(r => setTimeout(r, cooldown));
         return;
@@ -141,7 +141,7 @@ async function openVideo(url, index) {
     }
 
     const browser = await puppeteer.launch({
-      headless: true,
+      headless: false,
       ignoreHTTPSErrors: true,
       args: [
         `--user-agent=${userAgent}`,
