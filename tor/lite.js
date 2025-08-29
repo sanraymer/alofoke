@@ -3,7 +3,7 @@ import stealthPlugin from "puppeteer-extra-plugin-stealth";
 import UserAgent from "user-agents";
 import { faker } from "@faker-js/faker";
 import TorControl from "tor-control";
-import { anonymizeProxy, closeAnonymizedProxy } from "proxy-chain";
+import { anonymizeProxy } from "proxy-chain";
 import { EventEmitter } from "events";
 import { URL } from "url";
 import path from "path";
@@ -16,7 +16,7 @@ puppeteerExtra.use(stealthPlugin());
 const puppeteer = puppeteerExtra;
 
 // 🔹 Config
-const VIEWS = parseInt(process.env.VIEWS) || 10;
+const VIEWS = parseInt(process.env.VIEWS) || 4;
 const VIDEO_ID = process.env.VIDEO_ID || "KAApNx6OOKM";
 const videoUrl = `https://www.youtube.com/embed/${VIDEO_ID}?mute=1&rel=0&vq=small`;
 
@@ -50,7 +50,7 @@ async function launchBrowserWithProxy(index) {
   const httpProxyUrl = await anonymizeProxy(socksUpstream);
 
   const browser = await puppeteer.launch({
-    headless: true,
+    headless: false,
     ignoreHTTPSErrors: true,
     defaultViewport: null,
     userDataDir: path.join("/tmp", `puppeteer_profile_${index}`), // perfil independiente
@@ -146,13 +146,13 @@ async function openContext(index) {
   console.log(`✅ Ventana ${index + 1} abierta con IP Tor única: ${username}`);
 
   // Reinicio automático y manejo de errores
-  const watchMs = 300000 + Math.floor(Math.random() * 60000);
+  /*const watchMs = 300000 + Math.floor(Math.random() * 60000);
   setTimeout(async () => {
     console.log(`🔄 Reiniciando ventana ${index + 1} por tiempo cumplido`);
     try { await page.close(); } catch {}
     try { await browser.close(); } catch {}
     await openContext(index);
-  }, watchMs);
+  }, watchMs);*/
 
   const errorSelector = ".ytp-error, .ytp-error-content-wrap";
   const poll = setInterval(async () => {
@@ -162,7 +162,6 @@ async function openContext(index) {
         clearInterval(poll);
         console.log(`🔄 Reiniciando ventana ${index + 1} por YouTube error/bot-check`);
         try { await page.close(); } catch {}
-        try { await browser.close(); } catch {}
         await openContext(index);
       }
     } catch {}
