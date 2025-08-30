@@ -84,14 +84,27 @@ const browsers = [];
 // Click seguro en el botón grande de Play
 const clickLargePlayButton = async (page) => {
   try {
-    await page.waitForSelector(".ytp-large-play-button.ytp-button", { timeout: 10000 });
-    const btn = await page.$(".ytp-large-play-button.ytp-button");
-    if (btn) {
-      await btn.click();
-      console.log("✅ Click inicial en Play realizado");
+    // Desktop
+    const desktopBtn = await page.$(".ytp-large-play-button.ytp-button");
+    if (desktopBtn) {
+      await desktopBtn.click();
+      humanMouse(page);
+      humanScroll(page);
+      console.log("▶ Play presionado (desktop)");
+      return;
     }
-  } catch {
-    console.log("⚠️ No se encontró el botón de Play o ya estaba en reproducción");
+
+    // Mobile
+    const mobileBtn = await page.$("c3-icon.ytmCuedOverlayPlayButtonIcon");
+    if (mobileBtn) {
+      await page.evaluate(el => el.click(), mobileBtn);
+      console.log("▶ Play presionado (mobile)");
+      return;
+    }
+
+    console.log("ℹ️ No se encontró botón de play");
+  } catch (err) {
+    console.log("⚠️ Error al presionar play:", err.message);
   }
 };
 
@@ -102,7 +115,10 @@ async function openVideo(url, index) {
     // 🔹 Espera aleatoria 10–20s para que Tor aplique nueva identidad (evitar rate limiting)
     await new Promise(r => setTimeout(r, 10000 + Math.floor(Math.random()*10000)));
 
-    const userAgent = new UserAgent({ deviceCategory: "desktop" }).toString();
+    const categories = ["desktop", "mobile", "tablet"]; // ["desktop", "mobile", "tablet"];
+    const randomCategory = categories[Math.floor(Math.random() * categories.length)];
+    const userAgent = new UserAgent({ deviceCategory: randomCategory }).toString();
+ 
     // 🔹 Locale y timezone aleatorios con @faker-js/faker (cientos de combinaciones)
     const languageCodes = [
       "af","ar","az","be","bg","bn","bs","ca","cs","cy","da","de","el","en","es","et","eu","fa","fi","fr","ga","gl","gu","he","hi","hr","hu","hy","id","is","it","ja","ka","kk","km","kn","ko","lt","lv","mk","ml","mn","mr","ms","nb","ne","nl","nn","pa","pl","pt","ro","ru","si","sk","sl","sq","sr","sv","ta","te","th","tr","uk","ur","vi","zh"
@@ -178,8 +194,8 @@ async function openVideo(url, index) {
     } catch {}
 
     await page.setViewport({
-      width: 320 + Math.floor(Math.random() * 20),
-      height: 180 + Math.floor(Math.random() * 10),
+      width: 320 + Math.floor(Math.random() * 60),
+      height: 180 + Math.floor(Math.random() * 30),
     });
 
     // Observadores/handlers Node-side (se eliminarán con removeAllListeners/cleanup)
