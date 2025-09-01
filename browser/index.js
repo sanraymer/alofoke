@@ -4,6 +4,7 @@ import UserAgent from "user-agents";
 import readline from "readline";
 import { faker } from "@faker-js/faker";
 import { EventEmitter } from 'events';
+import fs from "fs-extra";
 
 // 🔹 Evitar MaxListenersExceededWarning
 EventEmitter.defaultMaxListeners = 1000;
@@ -13,8 +14,8 @@ puppeteerExtra.use(stealthPlugin());
 const puppeteer = puppeteerExtra;
 
 // 🔹 Configuración
-const VIEWS = parseInt(process.env.VIEWS) || 1;
-const VIDEO_ID = process.env.VIDEO_ID || "Kl6dLJanhxw";
+const VIEWS = parseInt(process.env.VIEWS) || 2;
+const VIDEO_ID = process.env.VIDEO_ID || "AFLLSq8t16k";
 const CONFIG = {
   url: `https://www.youtube.com/embed/${VIDEO_ID}?mute=1&rel=0&vq=tiny&controls=0&modestbranding=1`,
   //url: `https://youtube.com/watch?v=${VIDEO_ID}`,
@@ -25,6 +26,32 @@ console.log(`🎯 Configuración: ${VIEWS} vistas para video ${VIDEO_ID}`);
 console.log(`🔗 URL: ${CONFIG.url}`);
 
 const browsers = [];
+
+// Datos del cache guardado
+async function getUserDataDir(index) {
+    const cacheFolder = "./cache"; // Carpeta principal de cache
+    const base = `${cacheFolder}/cache_base`;
+    const tmp = `${cacheFolder}/tmp_${index}`;
+
+    // Crear carpeta principal si no existe
+    await fs.ensureDir(cacheFolder);
+
+    // Borrar cache temporal si ya existe
+    await fs.remove(tmp);
+
+    // Copiar base al cache temporal
+    await fs.copy(base, tmp, { 
+      overwrite: true,
+      filter: (src) => {
+        const name = src.split("/").pop();
+        // Ignorar archivos de bloqueo y subcarpetas internas tipo "SingletonLock" o ":1"
+        if (name.startsWith("Singleton") || name.includes(":")) return false;
+        return true;
+      }
+    });
+
+    return tmp;
+}
 
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -150,10 +177,17 @@ async function openVideo(url, index) {
     const locale = `${lang}-${country}`;
     const timezone = faker.location.timeZone();
 
+    const proxyHost = "proxy.smartproxy.net";
+    const proxyPort = 3120;
+    const proxyUsername = "smart-j4zf9ya95u7k";
+    const proxyPassword = "56OiwXhX84BAeE2u";
+
+    const userDataDir = await getUserDataDir(index);
+
     const browser = await puppeteer.launch({
-      headless: false,
+      headless: true,
       ignoreHTTPSErrors: true,
-      userDataDir: "./cache_base", 
+      userDataDir,
       args: [
         `--user-agent=${userAgent}`,
         `--lang=${locale}`,
@@ -163,24 +197,43 @@ async function openVideo(url, index) {
         "--disable-dev-shm-usage",
         "--disable-extensions",
         "--mute-audio",
+        `--proxy-server=http://${proxyHost}:${proxyPort}`,
       ],
     });
 
     const page = await browser.newPage();
 
+    // 🔹 Autenticación del proxy
+    await page.authenticate({
+        username: proxyUsername,
+        password: proxyPassword,
+    });
+
     // 🔹 Limitar ancho de banda
     const client = await page.target().createCDPSession();
     await client.send('Network.enable');
-    await client.send('Network.emulateNetworkConditions', {
-      offline: false,
-      latency: 100,             // latencia simulada ms
-      downloadThroughput: 100 * 1024, // 0.1MB
-      uploadThroughput: 2000     // bytes/s
+
+    // 🔹 Definir tipos de conexión (3G, 4G, WiFi)
+    const connections = [
+        { download: 500 * 1024, upload: 500 * 1024, latency: 150 }, // 3G
+        { download: 1.5 * 1024 * 1024, upload: 750 * 1024, latency: 40 }, // 4G
+        { download: 5 * 1024 * 1024, upload: 2 * 1024 * 1024, latency: 20 }, // WiFi
+    ];
+
+    // 🔹 Escoger una conexión al azar
+    const conn = connections[Math.floor(Math.random() * connections.length)];
+    await client.send("Network.emulateNetworkConditions", {
+        offline: false,
+        downloadThroughput: conn.download,
+        uploadThroughput: conn.upload,
+        latency: conn.latency,
     });
+
+    console.log(`📡 Instancia ${index + 1} usando conexión simulada: ${JSON.stringify(conn)}`);
 
     // 🔹 Interceptar requests
     let lastAllowedTime = 0;
-    const INTERVAL = 10000; // 10 segundos
+    const INTERVAL = 3000; // 3 segundos
 
     await page.setRequestInterception(true);
     page.on("request", request => {
@@ -198,11 +251,11 @@ async function openVideo(url, index) {
             if (now - lastAllowedTime >= INTERVAL) {
                 lastAllowedTime = now;
                 //console.log(`✅ Permitido: ${url}`);
-                console.log(`✅ Permitido`);
+                //console.log(`✅ Permitido`);
                 return request.continue();
             } else {
                 //console.log(`❌ Abortado: ${url}`);
-                console.log(`❌ Abortado`);
+                //console.log(`❌ Abortado`);
                 return request.abort();
             }
         }
@@ -230,6 +283,21 @@ async function openVideo(url, index) {
 
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 90000 });
     await clickLargePlayButton(page);
+
+    // 🔹 Polling para detectar errores de YouTube y reiniciar solo este tab
+    const errorSelector = ".ytp-error, .ytp-error-content-wrap";
+    const poll = setInterval(async () => {
+        try {
+        const found = await page.$(errorSelector);
+        if (found) {
+            clearInterval(poll);
+            console.log(`⚠️ Error detectado en ventana ${index + 1}, reiniciando tab...`);
+            try { await page.close(); } catch {}
+            try { await context.close(); } catch {}
+            await openContext(index);
+        }
+        } catch {}
+    }, 5000);
 
     // 🔹 Mantener reproducción
     await page.evaluate(() => {

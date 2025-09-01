@@ -11,7 +11,7 @@ async function sleep(ms) {
 async function precacheYouTube() {
   const browser = await puppeteer.launch({
     headless: false,
-    userDataDir: "./cache_base", // Carpeta donde guardamos caché
+    userDataDir: "./cache/cache_base", // Carpeta donde guardamos caché
     args: [
       "--no-sandbox",
       "--disable-setuid-sandbox",
