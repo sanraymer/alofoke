@@ -1,2 +1,3 @@
 node_modules
 cache_tmp_*
+.DS_Store

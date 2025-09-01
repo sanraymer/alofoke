@@ -24,7 +24,7 @@ async function precacheYouTube() {
 
   // Para el embebido cacher ese de watch, de lo contrario no se cache el emebebido, por ser iframe
   await page.goto(
-    "https://youtube.com/watch?v=Kl6dLJanhxw",
+    "https://youtube.com/watch?v=AFLLSq8t16k",
     { waitUntil: "domcontentloaded" }
   );
 
