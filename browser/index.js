@@ -285,7 +285,7 @@ async function openVideo(url, index) {
     await clickLargePlayButton(page);
 
     // 🔹 Reinicio automático
-    const randomDelay = 50000 + Math.floor(Math.random() * 20000); // 50 a 70 segundos
+    const randomDelay = 70000 + Math.floor(Math.random() * 30000); // 70 a 100 segundos
     console.log(`⏱ Instancia ${index + 1} se reiniciará en ${Math.floor(randomDelay/1000)} segundos`);
     setTimeout(async () => {
       try {

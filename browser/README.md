@@ -16,28 +16,11 @@ docker stop alofoke-1 && docker rm -f alofoke-1 && docker stop alofoke-2 && dock
 # Dockerfile
 docker build -t alofoke-app .
 
-docker run -d --name alofoke-1 -e VIDEO_ID="AFLLSq8t16k" -e VIEWS=20 alofoke-app
-docker run -d --name alofoke-2 -e VIDEO_ID="AFLLSq8t16k" -e VIEWS=20 alofoke-app
-docker run -d --name alofoke-3 -e VIDEO_ID="AFLLSq8t16k" -e VIEWS=20 alofoke-app
-docker run -d --name alofoke-4 -e VIDEO_ID="AFLLSq8t16k" -e VIEWS=20 alofoke-app
-docker run -d --name alofoke-5 -e VIDEO_ID="AFLLSq8t16k" -e VIEWS=20 alofoke-app
-docker run -d --name alofoke-6 -e VIDEO_ID="AFLLSq8t16k" -e VIEWS=20 alofoke-app
-docker run -d --name alofoke-7 -e VIDEO_ID="AFLLSq8t16k" -e VIEWS=20 alofoke-app
-docker run -d --name alofoke-8 -e VIDEO_ID="AFLLSq8t16k" -e VIEWS=20 alofoke-app
-docker run -d --name alofoke-9 -e VIDEO_ID="AFLLSq8t16k" -e VIEWS=20 alofoke-app
-docker run -d --name alofoke-10 -e VIDEO_ID="AFLLSq8t16k" -e VIEWS=20 alofoke-app
-docker run -d --name alofoke-11 -e VIDEO_ID="AFLLSq8t16k" -e VIEWS=20 alofoke-app
-docker run -d --name alofoke-12 -e VIDEO_ID="AFLLSq8t16k" -e VIEWS=20 alofoke-app
-docker run -d --name alofoke-13 -e VIDEO_ID="AFLLSq8t16k" -e VIEWS=20 alofoke-app
-docker run -d --name alofoke-14 -e VIDEO_ID="AFLLSq8t16k" -e VIEWS=20 alofoke-app
-docker run -d --name alofoke-15 -e VIDEO_ID="AFLLSq8t16k" -e VIEWS=20 alofoke-app
-
+docker run -d --name alofoke-1 -e VIDEO_ID="AFLLSq8t16k" -e VIEWS=20 alofoke-app && docker run -d --name alofoke-2 -e VIDEO_ID="AFLLSq8t16k" -e VIEWS=20 alofoke-app && docker run -d --name alofoke-3 -e VIDEO_ID="AFLLSq8t16k" -e VIEWS=20 alofoke-app && docker run -d --name alofoke-4 -e VIDEO_ID="AFLLSq8t16k" -e VIEWS=20 alofoke-app && docker run -d --name alofoke-5 -e VIDEO_ID="AFLLSq8t16k" -e VIEWS=20 alofoke-app && docker run -d --name alofoke-6 -e VIDEO_ID="AFLLSq8t16k" -e VIEWS=20 alofoke-app && docker run -d --name alofoke-7 -e VIDEO_ID="AFLLSq8t16k" -e VIEWS=20 alofoke-app && docker run -d --name alofoke-8 -e VIDEO_ID="AFLLSq8t16k" -e VIEWS=20 alofoke-app && docker run -d --name alofoke-9 -e VIDEO_ID="AFLLSq8t16k" -e VIEWS=20 alofoke-app && docker run -d --name alofoke-10 -e VIDEO_ID="AFLLSq8t16k" -e VIEWS=20 alofoke-app && docker run -d --name alofoke-11 -e VIDEO_ID="AFLLSq8t16k" -e VIEWS=20 alofoke-app && docker run -d --name alofoke-12 -e VIDEO_ID="AFLLSq8t16k" -e VIEWS=20 alofoke-app && docker run -d --name alofoke-13 -e VIDEO_ID="AFLLSq8t16k" -e VIEWS=20 alofoke-app && docker run -d --name alofoke-14 -e VIDEO_ID="AFLLSq8t16k" -e VIEWS=20 alofoke-app && docker run -d --name alofoke-15 -e VIDEO_ID="AFLLSq8t16k" -e VIEWS=20 alofoke-app
 
 docker run -d --name alofoke-22 -e VIDEO_ID="AFLLSq8t16k" -e VIEWS=10 alofoke-app
 
-
 docker rm -f alofoke-9 && docker run -d --name alofoke-9 -e VIDEO_ID="AFLLSq8t16k" -e VIEWS=100 alofoke-app
-
 
 # Docker Compose
 docker-compose up -d
