@@ -54,7 +54,7 @@ async function getBrowser() {
       const httpProxyUrl = await anonymizeProxy(socksUpstream);
 
       browser = await puppeteer.launch({
-        headless: true,
+        headless: false,
         ignoreHTTPSErrors: true,
         defaultViewport: null,
         args: [

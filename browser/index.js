@@ -14,9 +14,10 @@ const puppeteer = puppeteerExtra;
 
 // 🔹 Configuración
 const VIEWS = parseInt(process.env.VIEWS) || 1;
-const VIDEO_ID = process.env.VIDEO_ID || "hsANqBeLrS8";
+const VIDEO_ID = process.env.VIDEO_ID || "Kl6dLJanhxw";
 const CONFIG = {
-  url: `https://www.youtube.com/embed/${VIDEO_ID}?mute=1&rel=0&vq=small`,
+  url: `https://www.youtube.com/embed/${VIDEO_ID}?mute=1&rel=0&vq=tiny&controls=0&modestbranding=1`,
+  //url: `https://youtube.com/watch?v=${VIDEO_ID}`,
   cantidad: VIEWS,
 };
 
@@ -24,6 +25,41 @@ console.log(`🎯 Configuración: ${VIEWS} vistas para video ${VIDEO_ID}`);
 console.log(`🔗 URL: ${CONFIG.url}`);
 
 const browsers = [];
+
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Movimientos del mouse
+async function humanMouse(page) {
+    const box = { x: 100, y: 100, width: 300, height: 200 };
+    for (let i = 0; i < Math.floor(Math.random() * 5) + 3; i++) {
+        try {
+        const x = box.x + Math.floor(Math.random() * box.width);
+        const y = box.y + Math.floor(Math.random() * box.height);
+        await page.mouse.move(x, y, { steps: Math.floor(Math.random() * 10) + 5 });
+        await sleep(Math.floor(Math.random() * 2000) + 500);
+        } catch (err) {
+        console.log("⚠️ humanMouse: La página ya se cerró, abortando movimientos");
+        break;
+        }
+    }
+}
+
+// Scroll aleatorio
+async function humanScroll(page) {
+    const scrollTimes = Math.floor(Math.random() * 3) + 1;
+    for (let i = 0; i < scrollTimes; i++) {
+        try {
+        const scrollY = Math.floor(Math.random() * 500);
+        await page.evaluate(y => window.scrollBy(0, y), scrollY);
+        await sleep(Math.floor(Math.random() * 1500) + 500);
+        } catch (err) {
+        console.log("⚠️ humanScroll: La página ya se cerró, abortando scroll");
+        break;
+        }
+    }
+}
 
 // Click seguro en el botón grande de Play
 const clickLargePlayButton = async (page) => {
@@ -50,11 +86,59 @@ const clickLargePlayButton = async (page) => {
     } catch (err) {
       console.log("⚠️ Error al presionar play:", err.message);
     }
-  };
+};
 
+async function monitorBandwidth(page, index) {
+    const client = await page.target().createCDPSession();
+    await client.send('Network.enable');
+
+    let totalBytes = 0;
+    const resourceBytes = {};
+
+    // 🔹 Contar todos los bytes (video incluido)
+    client.on('Network.loadingFinished', (event) => {
+        totalBytes += event.encodedDataLength;
+    });
+
+    // 🔹 Contar bytes por tipo de recurso (aproximado)
+    page.on("requestfinished", async (request) => {
+        try {
+            const response = request.response();
+            if (!response) return;
+
+            let type = request.resourceType(); // script, image, xhr, etc.
+
+            // Forzar video/chunks de YouTube como "media"
+            if (request.url().includes("googlevideo.com")) type = "media";
+
+            const headers = response.headers();
+            let length = parseInt(headers['content-length']) || 0;
+
+            if (!resourceBytes[type]) resourceBytes[type] = 0;
+            resourceBytes[type] += length;
+        } catch (err) {
+            // ignorar errores
+        }
+    });
+
+    const interval = setInterval(() => {
+        console.log(`\n📊 Instancia ${index + 1} - Consumo total: ${(totalBytes / 1024 / 1024).toFixed(2)} MB`);
+
+        const sorted = Object.entries(resourceBytes).sort((a, b) => b[1] - a[1]);
+
+        console.log(`📊 Consumo por tipo de recurso:`);
+        if (sorted.length === 0) console.log("  Esperando datos...");
+        for (const [type, bytes] of sorted) {
+            console.log(`  ${type.padEnd(12)} : ${(bytes / 1024 / 1024).toFixed(2)} MB`);
+        }
+    }, 10000);
+
+    return () => clearInterval(interval); // Para limpiar si cerramos la pestaña
+}
+  
 async function openVideo(url, index) {
   try {
-    const categories = ["desktop", "mobile", "tablet"];
+    const categories = ["desktop"]; // ["desktop", "mobile", "tablet"];
     const randomCategory = categories[Math.floor(Math.random() * categories.length)];
     const userAgent = new UserAgent({ deviceCategory: randomCategory }).toString();
 
@@ -69,6 +153,7 @@ async function openVideo(url, index) {
     const browser = await puppeteer.launch({
       headless: false,
       ignoreHTTPSErrors: true,
+      userDataDir: "./cache_base", 
       args: [
         `--user-agent=${userAgent}`,
         `--lang=${locale}`,
@@ -84,40 +169,47 @@ async function openVideo(url, index) {
     const page = await browser.newPage();
 
     // 🔹 Limitar ancho de banda
-    /*const client = await page.target().createCDPSession();
+    const client = await page.target().createCDPSession();
     await client.send('Network.enable');
     await client.send('Network.emulateNetworkConditions', {
       offline: false,
       latency: 100,             // latencia simulada ms
-      downloadThroughput: 500 * 1024, // 500 KB/s 
-      uploadThroughput: 512     // bytes/s (0.5 KB/s)
-    });*/
+      downloadThroughput: 100 * 1024, // 0.1MB
+      uploadThroughput: 2000     // bytes/s
+    });
 
     // 🔹 Interceptar requests
     let lastAllowedTime = 0;
     const INTERVAL = 10000; // 10 segundos
 
     await page.setRequestInterception(true);
-
     page.on("request", request => {
         const url = request.url();
         const now = Date.now();
+        const blocked = ["image","font","other","imageset"];
 
+        // Bloquear recursos no críticos
+        if (blocked.includes(request.resourceType())) {
+            return request.abort();
+        }
+
+        // Control de googlevideo
         if (url.includes("googlevideo.com")) {
             if (now - lastAllowedTime >= INTERVAL) {
                 lastAllowedTime = now;
-                console.log(`✅ Permitido.`);
-                request.continue();
+                //console.log(`✅ Permitido: ${url}`);
+                console.log(`✅ Permitido`);
+                return request.continue();
             } else {
-                console.log(`❌ Abortado.`);
-                request.abort();
+                //console.log(`❌ Abortado: ${url}`);
+                console.log(`❌ Abortado`);
+                return request.abort();
             }
-        } else {
-            request.continue();
         }
+
+        // Default: continuar
+        request.continue();
     });
-
-
 
     await page.setUserAgent(userAgent);
     await page.setExtraHTTPHeaders({
@@ -133,7 +225,10 @@ async function openVideo(url, index) {
 
     browsers.push(browser);
 
-    await page.goto(url, { waitUntil: "networkidle2", timeout: 90000 });
+    // 🔹 Iniciar monitoreo de ancho de banda
+    const stopMonitoring = await monitorBandwidth(page, index);
+
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 90000 });
     await clickLargePlayButton(page);
 
     // 🔹 Mantener reproducción
