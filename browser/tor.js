@@ -15,8 +15,8 @@ puppeteerExtra.use(stealthPlugin());
 const puppeteer = puppeteerExtra;
 
 // 🔹 Configuración video desde variables de entorno
-const VIEWS = parseInt(process.env.VIEWS) || 10;
-const VIDEO_ID = process.env.VIDEO_ID || "DaoxoYGuks4";
+const VIEWS = parseInt(process.env.VIEWS) || 3;
+const VIDEO_ID = process.env.VIDEO_ID || "xjkszKWsa4E";
 const CONFIG = {
   url: `https://www.youtube.com/embed/${VIDEO_ID}?mute=1&rel=0&vq=small`,
   cantidad: VIEWS,
@@ -178,6 +178,17 @@ async function openVideo(url, index) {
     });
 
     const page = await browser.newPage();
+
+    // 🔹 Limitar ancho de banda para simular reproducción real pero con pocos datos
+    const client = await page.target().createCDPSession();
+    await client.send('Network.enable'); // habilitar network tracking
+    await client.send('Network.emulateNetworkConditions', {
+      offline: false,
+      latency: 100,             // latencia simulada en ms
+      downloadThroughput: 1024, // bytes por segundo (1 KB/s)
+      uploadThroughput: 512     // bytes por segundo (0.5 KB/s)
+    });
+
     await page.setUserAgent(userAgent);
     // 🔹 Cabeceras realistas para embed (coherentes con YouTube)
     await page.setExtraHTTPHeaders({
