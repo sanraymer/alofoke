@@ -7,11 +7,11 @@ docker image
 # Stop all 
 docker stop $(docker ps -q)
 
-# Limpiar todo lo detenido 
-docker stop alofoke-1 && docker rm -f alofoke-1 && docker stop alofoke-2 && docker rm -f alofoke-2 && docker stop alofoke-3 && docker rm -f alofoke-3 && docker stop alofoke-4 && docker rm -f alofoke-4 && docker stop alofoke-5 && docker rm -f alofoke-5 && docker stop alofoke-6 && docker rm -f alofoke-6 && docker stop alofoke-7 && docker rm -f alofoke-7 && docker stop alofoke-8 && docker rm -f alofoke-8 && docker stop alofoke-9 && docker rm -f alofoke-9 && docker stop alofoke-10 && docker rm -f alofoke-10
-
 # Remove all
 docker system prune -a
+
+# Limpiar todo lo detenido 
+docker stop alofoke-1 && docker rm -f alofoke-1 && docker stop alofoke-2 && docker rm -f alofoke-2 && docker stop alofoke-3 && docker rm -f alofoke-3 && docker stop alofoke-4 && docker rm -f alofoke-4 && docker stop alofoke-5 && docker rm -f alofoke-5 && docker stop alofoke-6 && docker rm -f alofoke-6 && docker stop alofoke-7 && docker rm -f alofoke-7 && docker stop alofoke-8 && docker rm -f alofoke-8 && docker stop alofoke-9 && docker rm -f alofoke-9 && docker stop alofoke-10 && docker rm -f alofoke-10
 
 # Dockerfile
 docker build -t alofoke-app .
@@ -26,6 +26,11 @@ docker run -d --name alofoke-7 -e VIDEO_ID="AFLLSq8t16k" -e VIEWS=20 alofoke-app
 docker run -d --name alofoke-8 -e VIDEO_ID="AFLLSq8t16k" -e VIEWS=20 alofoke-app
 docker run -d --name alofoke-9 -e VIDEO_ID="AFLLSq8t16k" -e VIEWS=20 alofoke-app
 docker run -d --name alofoke-10 -e VIDEO_ID="AFLLSq8t16k" -e VIEWS=20 alofoke-app
+docker run -d --name alofoke-11 -e VIDEO_ID="AFLLSq8t16k" -e VIEWS=20 alofoke-app
+docker run -d --name alofoke-12 -e VIDEO_ID="AFLLSq8t16k" -e VIEWS=20 alofoke-app
+docker run -d --name alofoke-13 -e VIDEO_ID="AFLLSq8t16k" -e VIEWS=20 alofoke-app
+docker run -d --name alofoke-14 -e VIDEO_ID="AFLLSq8t16k" -e VIEWS=20 alofoke-app
+docker run -d --name alofoke-15 -e VIDEO_ID="AFLLSq8t16k" -e VIEWS=20 alofoke-app
 
 
 docker run -d --name alofoke-22 -e VIDEO_ID="AFLLSq8t16k" -e VIEWS=10 alofoke-app

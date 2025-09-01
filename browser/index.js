@@ -153,11 +153,11 @@ async function monitorBandwidth(page, index) {
 
         const sorted = Object.entries(resourceBytes).sort((a, b) => b[1] - a[1]);
 
-        console.log(`📊 Consumo por tipo de recurso:`);
+       /* console.log(`📊 Consumo por tipo de recurso:`);
         if (sorted.length === 0) console.log("  Esperando datos...");
         for (const [type, bytes] of sorted) {
             console.log(`  ${type.padEnd(12)} : ${(bytes / 1024 / 1024).toFixed(2)} MB`);
-        }
+        }*/
     }, 10000);
 
     return () => clearInterval(interval); // Para limpiar si cerramos la pestaña
@@ -283,6 +283,19 @@ async function openVideo(url, index) {
 
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 90000 });
     await clickLargePlayButton(page);
+
+    // 🔹 Reinicio automático
+    const randomDelay = 50000 + Math.floor(Math.random() * 20000); // 50 a 70 segundos
+    console.log(`⏱ Instancia ${index + 1} se reiniciará en ${Math.floor(randomDelay/1000)} segundos`);
+    setTimeout(async () => {
+      try {
+        console.log(`♻️ Reiniciando instancia ${index + 1}...`);
+        await browser.close();
+      } catch (err) {
+        console.log(`⚠️ Error cerrando instancia ${index + 1}: ${err.message}`);
+      }
+      await openVideo(url, index); // Abrir nueva instancia
+    }, randomDelay);
 
     // 🔹 Polling para detectar errores de YouTube y reiniciar solo este tab
     const errorSelector = ".ytp-error, .ytp-error-content-wrap";
